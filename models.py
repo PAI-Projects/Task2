@@ -94,11 +94,15 @@ class BayesNet(nn.Module):
         #  Don't forget to apply your activation function in between BayesianLayers!
         log_prior = torch.tensor(0.0)
         log_variational_posterior = torch.tensor(0.0)
-
         output_features = x
-        for i in range(len(self.layers)):
-            output_features = self.layers[i](output_features)
-            output_features = self.activation(output_features)
+
+        for idx, current_layer in enumerate(self.layers):
+            new_features, new_log_prior, new_log_posterior = current_layer(output_features)
+            if idx < len(self.layers) - 1:
+                new_features = self.activation(new_features)
+            output_features = new_features
+            log_prior += new_log_prior  # TODO do we just add up according to (2) in paper?
+            log_variational_posterior += new_log_posterior
 
         return output_features, log_prior, log_variational_posterior
 
