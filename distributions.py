@@ -55,7 +55,7 @@ class MultivariateDiagonalGaussian(ParameterDistribution):
 
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
         variances = F.softplus(self.rho) ** 2
-        m = MultivariateNormal(self.mu, torch.eye(self.rho.shape[0]) * variances)
+        m = Normal(self.mu, variances)
 
         log_p = m.log_prob(values)
 
