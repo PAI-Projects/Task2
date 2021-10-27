@@ -27,9 +27,9 @@ class UnivariateGaussian(ParameterDistribution):
         """
         # p = (1 / (self.sigma * math.sqrt(2 * np.pi))) * torch.exp(-(values - self.mu) ** 2 / (2 * self.sigma**2))
         m = Normal(self.mu, self.sigma)
-        p = torch.exp(m.log_prob(values))
+        log_p = m.log_prob(values)
 
-        return torch.log(p).sum()
+        return log_p.sum()
 
     def sample(self) -> torch.Tensor:
         z = torch.normal(mean=torch.tensor(0.0), std=torch.tensor(1.0))
@@ -57,9 +57,9 @@ class MultivariateDiagonalGaussian(ParameterDistribution):
         variances = F.softplus(self.rho) ** 2
         m = MultivariateNormal(self.mu, torch.eye(self.rho.shape[0]) * variances)
 
-        p = torch.exp(m.log_prob(values))
+        log_p = m.log_prob(values)
 
-        return torch.log(p).sum()
+        return log_p.sum()
 
     def sample(self) -> torch.Tensor:
         n = self.mu.shape[0]
