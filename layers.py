@@ -52,9 +52,9 @@ class BayesianLayer(nn.Module):
         #      torch.nn.Parameter(torch.zeros((out_features, in_features))),
         #      torch.nn.Parameter(torch.ones((out_features, in_features)))
         #  )
-        self.weights_var_posterior = UnivariateGaussian(  # TODO in the paper they use two gaussians per weight
-            torch.nn.Parameter(torch.zeros((out_features, in_features))),
-            torch.nn.Parameter(torch.ones((out_features, in_features)))
+        self.weights_var_posterior = MultivariateDiagonalGaussian(  # TODO in the paper they use two gaussians per weight
+            torch.nn.Parameter(torch.zeros(out_features * in_features)),
+            torch.nn.Parameter(torch.ones(out_features * in_features))
         )
 
         assert isinstance(self.weights_var_posterior, ParameterDistribution)
@@ -63,7 +63,7 @@ class BayesianLayer(nn.Module):
         if self.use_bias:
             # TODO: As for the weights, create the bias variational posterior instance here.
             #  Make sure to follow the same rules as for the weight variational posterior.
-            self.bias_var_posterior = UnivariateGaussian(
+            self.bias_var_posterior = MultivariateDiagonalGaussian(
                 torch.nn.Parameter(torch.zeros(out_features)),  # TODO in the paper they use two gaussians per weight
                 torch.nn.Parameter(torch.ones(out_features))
             )
