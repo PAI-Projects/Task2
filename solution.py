@@ -117,6 +117,13 @@ class Model(object):
                     assert isinstance(self.network, BayesNet)
 
                     # TODO: Implement Bayes by backprop training here
+                    output_features, log_prior, log_variational_posterior = self.network(batch_x)
+
+                    # TODO: implement correct loss
+                    loss = - log_prior - log_variational_posterior \
+                           + F.nll_loss(F.log_softmax(output_features, dim=1), batch_y, reduction='sum')
+
+                    loss.backward()
 
                 self.optimizer.step()
 
