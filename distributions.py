@@ -1,10 +1,9 @@
-import math
-
 import numpy as np
 import torch
+import torch.nn.functional as F
 from matplotlib import pyplot as plt
 from scipy import stats
-from torch.distributions import Normal
+from torch.distributions import Normal, MultivariateNormal
 
 from util import ParameterDistribution
 
@@ -55,12 +54,20 @@ class MultivariateDiagonalGaussian(ParameterDistribution):
         self.rho = rho
 
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
-        # TODO: Implement this
-        return 0.0
+        variances = F.softplus(self.rho) ** 2
+        m = MultivariateNormal(self.mu, torch.eye(self.rho.shape[0]) * variances)
+
+        p = torch.exp(m.log_prob(values))
+
+        return torch.log(p).sum()
 
     def sample(self) -> torch.Tensor:
-        # TODO: Implement this
-        raise NotImplementedError()
+        n = self.mu.shape[0]
+        # since we have a diagonal covariance matrix we can draw from n unvariate gaussians
+        z = torch.normal(mean=torch.zeros(n), std=torch.ones(n))
+        x = self.mu + F.softplus(self.rho) * z
+
+        return x
 
 
 if __name__ == '__main__':
@@ -75,17 +82,41 @@ if __name__ == '__main__':
     log_l = normal_dist.log_likelihood(torch.from_numpy(data_scipy))
     log_l_scipy = np.log(stats.norm.pdf(data_scipy, mu, sigma)).sum()
 
-    print("likelihood ours", log_l)
-    print("likelihood scipy", log_l_scipy)
+    print("log likelihood ours", log_l)
+    print("log likelihood scipy", log_l_scipy)
 
     # generating samples
     x = np.asarray([normal_dist.sample().numpy() for i in range(100000)])
 
-    print("plotting samples")
+    # plotting samples
     plt.hist(data_scipy, bins=100)
     plt.title("scipy samples")
     plt.show()
 
     plt.hist(x, bins=100)
     plt.title("our samples")
+    plt.show()
+
+    # multivariate tests
+    mu = [10.0, 5.0]
+    sigma = [1.0, 3.0]
+
+    multivariate_diag_normal = MultivariateDiagonalGaussian(torch.tensor(mu), torch.tensor(sigma))
+
+    samples = np.asarray([multivariate_diag_normal.sample().numpy() for i in range(100000)])
+
+    # log likelihood
+    log_l_mult = multivariate_diag_normal.log_likelihood(torch.from_numpy(samples))
+    log_l_mult_scipy = np.log(stats.norm.pdf(samples, mu, sigma)).sum()
+
+    print("log likelihood multi variate", log_l_mult)
+    print("log likelihood scipy", log_l_mult_scipy)
+
+    # plotting samples
+    plt.hist(samples[:, 0], bins=100)
+    plt.title("multivariate first dim")
+    plt.show()
+
+    plt.hist(samples[:, 1], bins=100)
+    plt.title("multivariate 2nd dim")
     plt.show()
