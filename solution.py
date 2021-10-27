@@ -179,7 +179,7 @@ class BayesianLayer(nn.Module):
         #  You can create constants using torch.tensor(...).
         #  Do NOT use torch.Parameter(...) here since the prior should not be optimized!
         #  Example: self.prior = MyPrior(torch.tensor(0.0), torch.tensor(1.0))
-        self.prior = None
+        self.prior = UnivariateGaussian(torch.Tensor(0.0), torch.tensor(1.0))
         assert isinstance(self.prior, ParameterDistribution)
         assert not any(True for _ in self.prior.parameters()), 'Prior cannot have parameters'
 
