@@ -93,8 +93,8 @@ class BayesianLayer(nn.Module):
         weights = weights_sample.reshape((self.out_features, self.in_features))
         bias = self.bias_var_posterior.sample() if self.use_bias else None
 
-        # TODO: is this correct? What happens with the bias ?
-        log_prior = self.prior.log_likelihood(weights_sample)  # TODO: use self.mixture_weight
-        log_variational_posterior = self.weights_var_posterior.log_likelihood(weights_sample)
+        # TODO: is this correct?
+        log_prior = self.prior.log_likelihood(weights_sample) + self.prior.log_likelihood(bias)  # TODO: use self.mixture_weight
+        log_variational_posterior = self.weights_var_posterior.log_likelihood(weights_sample) + self.bias_var_posterior.log_likelihood(bias)
 
         return F.linear(inputs, weights, bias), log_prior, log_variational_posterior
