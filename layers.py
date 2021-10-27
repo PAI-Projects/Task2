@@ -32,13 +32,13 @@ class BayesianLayer(nn.Module):
         #  You can create constants using torch.tensor(...).
         #  Do NOT use torch.Parameter(...) here since the prior should not be optimized!
         #  Example: self.prior = MyPrior(torch.tensor(0.0), torch.tensor(1.0))
+        # TODO add mixture used in paper
         nr_mixture_components = 2
         # refers to pi in paper; pi in {0.25, 0.5, 0.75}
         self.mixture_weight = 0.5
         # according to paper: sigma1 in e^-{0, 1, 2}, sigma2 in e^-{6,7,8}
         prior_sigma = [torch.exp(torch.tensor(-1)), torch.exp(torch.tensor(-7))]
-        # TODO MultivariateDiagonalGaussian uses rho as input why???
-        self.prior = MultivariateDiagonalGaussian(torch.zeros(nr_mixture_components), torch.tensor(prior_sigma))
+        self.prior = UnivariateGaussian(torch.tensor(0.0), prior_sigma[0])
         assert isinstance(self.prior, ParameterDistribution)
         assert not any(True for _ in self.prior.parameters()), 'Prior cannot have parameters'
 
@@ -88,9 +88,13 @@ class BayesianLayer(nn.Module):
         # TODO: Perform a forward pass as described in this method's docstring.
         #  Make sure to check whether `self.use_bias` is True,
         #  and if yes, include the bias as well.
-        log_prior = torch.tensor(0.0)  # TODO do we draw a second sample ?
-        log_variational_posterior = torch.tensor(0.0)  # TODO do we draw a second sample ? bias ?
-        weights = self.weights_var_posterior.sample().reshape((self.out_features, self.in_features))
+        weights_sample = self.weights_var_posterior.sample()
+
+        weights = weights_sample.reshape((self.out_features, self.in_features))
         bias = self.bias_var_posterior.sample() if self.use_bias else None
+
+        # TODO: is this correct? What happens with the bias ?
+        log_prior = self.prior.log_likelihood(weights_sample)  # TODO: use self.mixture_weight
+        log_variational_posterior = self.weights_var_posterior.log_likelihood(weights_sample)
 
         return F.linear(inputs, weights, bias), log_prior, log_variational_posterior
