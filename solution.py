@@ -294,52 +294,6 @@ class BayesNet(nn.Module):
         return estimated_probability
 
 
-class UnivariateGaussian(ParameterDistribution):
-    """
-    Univariate Gaussian distribution.
-    For multivariate data, this assumes all elements to be i.i.d.
-    """
-
-    def __init__(self, mu: torch.Tensor, sigma: torch.Tensor):
-        super(UnivariateGaussian, self).__init__()  # always make sure to include the super-class init call!
-        assert mu.size() == () and sigma.size() == ()
-        assert sigma > 0
-        self.mu = mu
-        self.sigma = sigma
-
-    def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
-        # TODO: Implement this
-        return 0.0
-
-    def sample(self) -> torch.Tensor:
-        # TODO: Implement this
-        raise NotImplementedError()
-
-
-class MultivariateDiagonalGaussian(ParameterDistribution):
-    """
-    Multivariate diagonal Gaussian distribution,
-    i.e., assumes all elements to be independent Gaussians
-    but with different means and standard deviations.
-    This parameterizes the standard deviation via a parameter rho as
-    sigma = softplus(rho).
-    """
-
-    def __init__(self, mu: torch.Tensor, rho: torch.Tensor):
-        super(MultivariateDiagonalGaussian, self).__init__()  # always make sure to include the super-class init call!
-        assert mu.size() == rho.size()
-        self.mu = mu
-        self.rho = rho
-
-    def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
-        # TODO: Implement this
-        return 0.0
-
-    def sample(self) -> torch.Tensor:
-        # TODO: Implement this
-        raise NotImplementedError()
-
-
 def evaluate(model: Model, eval_loader: torch.utils.data.DataLoader, data_dir: str, output_dir: str):
     """
     Evaluate your model.
