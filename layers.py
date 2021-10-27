@@ -90,7 +90,7 @@ class BayesianLayer(nn.Module):
         #  and if yes, include the bias as well.
         log_prior = torch.tensor(0.0)  # TODO do we draw a second sample ?
         log_variational_posterior = torch.tensor(0.0)  # TODO do we draw a second sample ? bias ?
-        weights = self.weights_var_posterior.sample()
+        weights = self.weights_var_posterior.sample().reshape((self.out_features, self.in_features))
         bias = self.bias_var_posterior.sample() if self.use_bias else None
 
         return F.linear(inputs, weights, bias), log_prior, log_variational_posterior
