@@ -117,7 +117,10 @@ class Model(object):
                     # BayesNet training step via Bayes by backprop
                     assert isinstance(self.network, BayesNet)
 
-                    # TODO: Implement Bayes by backprop training here
+                    outputs, log_prior, log_var_posterior = self.network(batch_x)
+                    kl = 0.0
+
+                    
 
                 self.optimizer.step()
 
@@ -179,8 +182,8 @@ class BayesianLayer(nn.Module):
         #  You can create constants using torch.tensor(...).
         #  Do NOT use torch.Parameter(...) here since the prior should not be optimized!
         #  Example: self.prior = MyPrior(torch.tensor(0.0), torch.tensor(1.0))
+        self.prior_weights = UnivariateGaussian(torch.tensor(0.0), torch.tensor(1.0))
         if self.use_bias:
-            self.prior_weights = UnivariateGaussian(torch.tensor(0.0), torch.tensor(1.0))
             self.prior_bias = UnivariateGaussian(torch.tensor(0.0), torch.tensor(1.0))
 
         assert isinstance(self.prior_weights, ParameterDistribution)
@@ -232,16 +235,18 @@ class BayesianLayer(nn.Module):
         # TODO: Perform a forward pass as described in this method's docstring.
         #  Make sure to check whether `self.use_bias` is True,
         #  and if yes, include the bias as well.
-        log_bias_prior = torch.tensor(0.0)
-        log_bias_variational_posterior = torch.tensor(0.0)
-        if self.use_bias:
-            log_bias_prior = torch.log(self.prior_bias.sample())
-            log_bias_variational_posterior = torch.log(self.bias_var_posterior.sample())
+        weights = self.weights_var_posterior.sample()
 
-        log_prior = torch.log(self.prior_weights.sample())
-        log_variational_posterior = torch.log(self.weights_var_posterior.sample())
-        weights = log_prior + log_variational_posterior
-        bias = log_bias_prior + log_bias_variational_posterior
+        if self.use_bias:
+            bias = self.bias_var_posterior.sample()
+        else:
+            bias = None
+
+        log_prior = None
+        log_variational_posterior = None
+
+        # According to https://github.com/kumar-shridhar/PyTorch-BayesianCNN/blob/master/layers/BBB/BBBLinear.py
+        # Prior is not used in forward pass
 
         return F.linear(inputs, weights, bias), log_prior, log_variational_posterior
 
@@ -334,11 +339,11 @@ class UnivariateGaussian(ParameterDistribution):
         self.sigma = sigma
 
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
-        # TODO: Implement this
-        return 0.0
+        dist = torch.normal(self.mu, self.sigma)
+        return dist.log_prob(values)
 
     def sample(self) -> torch.Tensor:
-        weight = self.mu + self.sigma * torch.randn_like(self.sigma)
+        weight = self.mu + torch.log1p(torch.exp(self.sigma)) * torch.randn_like(self.sigma)
         return weight
 
 
@@ -358,11 +363,11 @@ class MultivariateDiagonalGaussian(ParameterDistribution):
         self.rho = rho
 
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
-        # TODO: Implement this
-        return 0.0
+        dist = torch.normal(self.mu, self.rho)
+        return dist.log_prob(values)
 
     def sample(self) -> torch.Tensor:
-        weight = self.mu + self.sigma * torch.randn_like(self.sigma)
+        weight = self.mu + torch.log1p(torch.exp(self.rho)) * torch.randn_like(self.rho)
         raise weight
 
 
