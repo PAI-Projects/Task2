@@ -57,7 +57,7 @@ class Model(object):
         # You might want to play around with those
         self.num_epochs = 100  # number of training epochs
         self.batch_size = 128  # training batch size
-        learning_rate = 1e-3  # training learning rates
+        learning_rate = 5 * 1e-4  # training learning rates
         hidden_layers = (100, 100)  # for each entry, creates a hidden layer with the corresponding number of units
         use_densenet = False  # set this to True in order to run a DenseNet for comparison
         self.print_interval = 100  # number of batches until updated metrics are displayed during training
@@ -91,6 +91,9 @@ class Model(object):
 
         self.network.train()
 
+        # print(list(self.network.parameters()))
+        kl = torch.tensor(0.0)
+
         progress_bar = trange(self.num_epochs)
         for _ in progress_bar:
             num_batches = len(train_loader)
@@ -116,12 +119,19 @@ class Model(object):
                     # BayesNet training step via Bayes by backprop
                     assert isinstance(self.network, BayesNet)
 
+                    # # TODO: Implement Bayes by backprop training here
+                    # output_features, log_prior, log_variational_posterior = self.network(batch_x)
+                    #
+                    # # TODO: is this the correct loss?
+                    # # q(w | theta) - log P(w) - log P(D | w)
+                    # loss = log_variational_posterior - log_prior \
+                    #        + F.nll_loss(F.log_softmax(output_features, dim=1), batch_y, reduction='sum')
                     # TODO: Implement Bayes by backprop training here
-                    output_features, log_prior, log_variational_posterior = self.network(batch_x)
+                    output_features, kl, _ = self.network(batch_x)
 
                     # TODO: is this the correct loss?
                     # q(w | theta) - log P(w) - log P(D | w)
-                    loss = log_variational_posterior - log_prior \
+                    loss = kl \
                            + F.nll_loss(F.log_softmax(output_features, dim=1), batch_y, reduction='sum')
 
                     loss.backward()
@@ -136,7 +146,7 @@ class Model(object):
                         assert isinstance(self.network, BayesNet)
                         current_logits, _, _ = self.network(batch_x)
                     current_accuracy = (current_logits.argmax(axis=1) == batch_y).float().mean()
-                    progress_bar.set_postfix(loss=loss.item(), acc=current_accuracy.item())
+                    progress_bar.set_postfix(loss=loss.item(), acc=current_accuracy.item(), kl=kl.detach().numpy())
 
     def predict(self, data_loader: torch.utils.data.DataLoader) -> np.ndarray:
         """
