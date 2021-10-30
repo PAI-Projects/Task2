@@ -66,7 +66,7 @@ class MultivariateDiagonalGaussian(ParameterDistribution):
         Z = torch.empty(self.mu.size()).normal_(0, 1)
 
         # re-parameterization
-        x = self.mu + F.softplus(self.rho, beta=100) * Z
+        x = self.mu + F.softplus(self.rho) * Z
 
         return x
 
