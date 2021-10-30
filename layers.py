@@ -3,7 +3,7 @@ import torch.optim
 from torch import nn
 from torch.nn import functional as F
 
-from distributions import MultivariateDiagonalGaussian, UnivariateGaussian
+from distributions import MultivariateDiagonalGaussian, UnivariateGaussian, MixtureDistribution
 from util import ParameterDistribution
 
 
@@ -35,10 +35,15 @@ class BayesianLayer(nn.Module):
         # TODO add mixture used in paper
         nr_mixture_components = 2
         # refers to pi in paper; pi in {0.25, 0.5, 0.75}
-        self.mixture_weight = 0.5
+        mixture_weights = torch.tensor([0.5, 0.5])
         # according to paper: sigma1 in e^-{0, 1, 2}, sigma2 in e^-{6,7,8}
-        prior_sigma = [torch.exp(torch.tensor(-1)), torch.exp(torch.tensor(-7))]
-        self.prior = UnivariateGaussian(torch.tensor(0.0), prior_sigma[0])
+        prior_sigma = [torch.exp(torch.tensor(-2)), torch.exp(torch.tensor(-8))]
+
+        self.prior = MixtureDistribution(mixtures=nn.ModuleList([UnivariateGaussian(torch.tensor(0.0), prior_sigma[0]),
+                                                                 UnivariateGaussian(torch.tensor(0.0), prior_sigma[1])]),
+                                         mixture_weights=mixture_weights,
+                                         sample_shape=1)
+
         assert isinstance(self.prior, ParameterDistribution)
         assert not any(True for _ in self.prior.parameters()), 'Prior cannot have parameters'
 
@@ -52,9 +57,21 @@ class BayesianLayer(nn.Module):
         #      torch.nn.Parameter(torch.zeros((out_features, in_features))),
         #      torch.nn.Parameter(torch.ones((out_features, in_features)))
         #  )
-        self.weights_var_posterior = MultivariateDiagonalGaussian(  # TODO in the paper they use two gaussians per weight
-            torch.nn.Parameter(torch.zeros(out_features, in_features)),
-            torch.nn.Parameter(torch.ones(out_features, in_features) * torch.tensor(-3))
+        init_rho = [torch.log(-1 + torch.exp(prior_sigma[i])) for i in range(len(prior_sigma))]
+
+        self.weights_var_posterior = MixtureDistribution(
+            mixtures=nn.ModuleList([
+                MultivariateDiagonalGaussian(
+                    torch.nn.Parameter(torch.zeros(out_features, in_features)),
+                    torch.nn.Parameter(torch.ones(out_features, in_features) * init_rho[0])
+                ),
+                MultivariateDiagonalGaussian(
+                    torch.nn.Parameter(torch.zeros(out_features, in_features)),
+                    torch.nn.Parameter(torch.ones(out_features, in_features) * init_rho[1])
+                )
+            ]),
+            mixture_weights=torch.nn.Parameter(torch.tensor([0.5, 0.5])),
+            sample_shape=(out_features, in_features)
         )
 
         assert isinstance(self.weights_var_posterior, ParameterDistribution)
