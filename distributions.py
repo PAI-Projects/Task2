@@ -3,9 +3,36 @@ import torch
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
 from scipy import stats
-from torch.distributions import Normal, MultivariateNormal
+from torch.distributions import Normal
 
 from util import ParameterDistribution
+
+
+class MixtureDistribution(ParameterDistribution):
+    """
+    Mixture distribution of multiple ParameterDistribution's.
+    """
+
+    def __init__(self, mixtures: list[ParameterDistribution], mixture_weights: torch.Tensor, sample_shape):
+        super(MixtureDistribution, self).__init__()  # always make sure to include the super-class init call!
+        assert len(mixtures) == mixture_weights.shape[0]
+        self.mixtures = mixtures
+        self.mixture_weights = mixture_weights
+        self.sample_shape = sample_shape
+
+    def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
+        x = torch.zeros(self.sample_shape)
+        for i, dist in enumerate(self.mixtures):
+            x += dist.log_likelihood(values) * self.mixture_weights[i]
+
+        return x
+
+    def sample(self) -> torch.Tensor:
+        x = torch.zeros(self.sample_shape)
+        for i, dist in enumerate(self.mixtures):
+            x += dist.sample() * self.mixture_weights[i]
+
+        return x
 
 
 class UnivariateGaussian(ParameterDistribution):
