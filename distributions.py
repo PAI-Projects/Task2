@@ -22,7 +22,7 @@ class MixtureDistribution(ParameterDistribution):
         self.sample_shape = sample_shape
 
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
-        x = torch.zeros(self.sample_shape)
+        x = torch.tensor(0.0)
         for i, dist in enumerate(self.mixtures):
             x += dist.log_likelihood(values) * self.mixture_weights[i]
 
