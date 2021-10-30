@@ -119,8 +119,9 @@ class Model(object):
                     # TODO: Implement Bayes by backprop training here
                     output_features, log_prior, log_variational_posterior = self.network(batch_x)
 
-                    # TODO: implement correct loss
-                    loss = - log_prior - log_variational_posterior \
+                    # TODO: is this the correct loss?
+                    # q(w | theta) - log P(w) - log P(D | w)
+                    loss = log_variational_posterior - log_prior \
                            + F.nll_loss(F.log_softmax(output_features, dim=1), batch_y, reduction='sum')
 
                     loss.backward()
