@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 from matplotlib import pyplot as plt
 from scipy import stats
+from torch import nn
 from torch.distributions import Normal
 
 from util import ParameterDistribution
@@ -13,7 +14,7 @@ class MixtureDistribution(ParameterDistribution):
     Mixture distribution of multiple ParameterDistribution's.
     """
 
-    def __init__(self, mixtures: list[ParameterDistribution], mixture_weights: torch.Tensor, sample_shape):
+    def __init__(self, mixtures: nn.ModuleList, mixture_weights: torch.Tensor, sample_shape):
         super(MixtureDistribution, self).__init__()  # always make sure to include the super-class init call!
         assert len(mixtures) == mixture_weights.shape[0]
         self.mixtures = mixtures
