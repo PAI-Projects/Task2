@@ -109,11 +109,21 @@ class BayesianLayer(nn.Module):
 
         bias = self.bias_var_posterior.sample() if self.use_bias else None
 
-        # TODO: is this correct?
-        log_prior = self.prior.log_likelihood(weights)
-        log_variational_posterior = self.weights_var_posterior.log_likelihood(weights)
+        log_prior = self.prior.sample().view(-1)
+        log_variational_posterior = weights.view(-1)
         if self.use_bias:
-            log_prior += self.prior.log_likelihood(bias)  # TODO: use self.mixture_weight
-            log_variational_posterior += self.bias_var_posterior.log_likelihood(bias)
+            log_prior += self.prior.sample().view(-1)
+            # log_variational_posterior += bias
 
-        return F.linear(inputs, weights, bias), log_prior, log_variational_posterior
+        kl_div = torch.abs(F.kl_div(log_variational_posterior, log_prior, reduction="sum", log_target=True))
+
+        return F.linear(inputs, weights, bias), kl_div, 0
+
+        # # TODO: is this correct?
+        # log_prior = self.prior.log_likelihood(weights)
+        # log_variational_posterior = self.weights_var_posterior.log_likelihood(weights)
+        # if self.use_bias:
+        #     log_prior += self.prior.log_likelihood(bias)
+        #     log_variational_posterior += self.bias_var_posterior.log_likelihood(bias)
+        #
+        # return F.linear(inputs, weights, bias), log_prior, log_variational_posterior
