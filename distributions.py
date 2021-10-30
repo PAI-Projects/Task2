@@ -54,18 +54,19 @@ class MultivariateDiagonalGaussian(ParameterDistribution):
         self.rho = rho
 
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
-        variances = F.softplus(self.rho) ** 2
-        m = Normal(self.mu, variances)
+        variances = torch.pow(F.softplus(self.rho), 2)
+        m = Normal(self.mu.view(-1), variances.view(-1))
 
-        log_p = m.log_prob(values)
+        log_p = m.log_prob(values.view(-1))
 
         return log_p.sum()
 
     def sample(self) -> torch.Tensor:
-        n = self.mu.shape[0]
         # since we have a diagonal covariance matrix we can draw from n unvariate gaussians
-        z = torch.normal(mean=torch.zeros(n), std=torch.ones(n))
-        x = self.mu + F.softplus(self.rho) * z
+        Z = torch.empty(self.mu.size()).normal_(0, 1)
+
+        # re-parameterization
+        x = self.mu + F.softplus(self.rho, beta=100) * Z
 
         return x
 

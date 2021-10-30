@@ -53,8 +53,8 @@ class BayesianLayer(nn.Module):
         #      torch.nn.Parameter(torch.ones((out_features, in_features)))
         #  )
         self.weights_var_posterior = MultivariateDiagonalGaussian(  # TODO in the paper they use two gaussians per weight
-            torch.nn.Parameter(torch.zeros(out_features * in_features)),
-            torch.nn.Parameter(torch.ones(out_features * in_features))
+            torch.nn.Parameter(torch.zeros(out_features, in_features)),
+            torch.nn.Parameter(torch.ones(out_features, in_features) * torch.exp(torch.tensor(-7)))
         )
 
         assert isinstance(self.weights_var_posterior, ParameterDistribution)
@@ -65,7 +65,7 @@ class BayesianLayer(nn.Module):
             #  Make sure to follow the same rules as for the weight variational posterior.
             self.bias_var_posterior = MultivariateDiagonalGaussian(
                 torch.nn.Parameter(torch.zeros(out_features)),  # TODO in the paper they use two gaussians per weight
-                torch.nn.Parameter(torch.ones(out_features))
+                torch.nn.Parameter(torch.ones(out_features) * torch.exp(torch.tensor(-7)))
             )
             assert isinstance(self.bias_var_posterior, ParameterDistribution)
             assert any(True for _ in self.bias_var_posterior.parameters()), 'Bias posterior must have parameters'
@@ -88,13 +88,15 @@ class BayesianLayer(nn.Module):
         # TODO: Perform a forward pass as described in this method's docstring.
         #  Make sure to check whether `self.use_bias` is True,
         #  and if yes, include the bias as well.
-        weights_sample = self.weights_var_posterior.sample()
+        weights = self.weights_var_posterior.sample()
 
-        weights = weights_sample.reshape((self.out_features, self.in_features))
         bias = self.bias_var_posterior.sample() if self.use_bias else None
 
         # TODO: is this correct?
-        log_prior = self.prior.log_likelihood(weights_sample) + self.prior.log_likelihood(bias)  # TODO: use self.mixture_weight
-        log_variational_posterior = self.weights_var_posterior.log_likelihood(weights_sample) + self.bias_var_posterior.log_likelihood(bias)
+        log_prior = self.prior.log_likelihood(weights)
+        log_variational_posterior = self.weights_var_posterior.log_likelihood(weights)
+        if self.use_bias:
+            log_prior += self.prior.log_likelihood(bias)  # TODO: use self.mixture_weight
+            log_variational_posterior += self.bias_var_posterior.log_likelihood(bias)
 
         return F.linear(inputs, weights, bias), log_prior, log_variational_posterior
