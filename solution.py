@@ -14,6 +14,8 @@ from util import ece
 # Set `EXTENDED_EVALUATION` to `True` in order to visualize your predictions.
 EXTENDED_EVALUATION = False
 
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 def run_solution(dataset_train: torch.utils.data.Dataset, data_dir: str = os.curdir, output_dir: str = '/results/') -> 'Model':
     """
@@ -55,9 +57,9 @@ class Model(object):
     def __init__(self):
         # Hyperparameters and general parameters
         # You might want to play around with those
-        self.num_epochs = 100  # number of training epochs
+        self.num_epochs = 50  # number of training epochs
         self.batch_size = 128  # training batch size
-        learning_rate = 5 * 1e-4  # training learning rates
+        learning_rate = 1e-4  # training learning rates
         hidden_layers = (100, 100)  # for each entry, creates a hidden layer with the corresponding number of units
         use_densenet = False  # set this to True in order to run a DenseNet for comparison
         self.print_interval = 100  # number of batches until updated metrics are displayed during training
@@ -71,6 +73,8 @@ class Model(object):
             # BayesNet
             print('Using a BayesNet model')
             self.network = BayesNet(in_features=28 * 28, hidden_features=hidden_layers, out_features=10)
+
+        self.network.to(DEVICE)
 
         # Optimizer for training
         # Feel free to try out different optimizers
@@ -92,13 +96,14 @@ class Model(object):
         self.network.train()
 
         # print(list(self.network.parameters()))
-        kl = torch.tensor(0.0)
 
         progress_bar = trange(self.num_epochs)
         for _ in progress_bar:
             num_batches = len(train_loader)
             for batch_idx, (batch_x, batch_y) in enumerate(train_loader):
                 # batch_x are of shape (batch_size, 784), batch_y are of shape (batch_size,)
+                batch_x = batch_x.to(DEVICE).float()
+                batch_y = batch_y.to(DEVICE).long()
 
                 self.network.zero_grad()
 
@@ -119,19 +124,20 @@ class Model(object):
                     # BayesNet training step via Bayes by backprop
                     assert isinstance(self.network, BayesNet)
 
-                    # # TODO: Implement Bayes by backprop training here
-                    # output_features, log_prior, log_variational_posterior = self.network(batch_x)
-                    #
-                    # # TODO: is this the correct loss?
-                    # # q(w | theta) - log P(w) - log P(D | w)
-                    # loss = log_variational_posterior - log_prior \
-                    #        + F.nll_loss(F.log_softmax(output_features, dim=1), batch_y, reduction='sum')
-                    # TODO: Implement Bayes by backprop training here
-                    output_features, kl, _ = self.network(batch_x)
+                    NR_SAMPLES = 3
 
-                    # TODO: is this the correct loss?
-                    # q(w | theta) - log P(w) - log P(D | w)
-                    loss = kl \
+                    output_features = torch.zeros((NR_SAMPLES, batch_x.shape[0], 10))
+                    log_prior = torch.zeros(NR_SAMPLES)
+                    log_variational_posterior = torch.zeros(NR_SAMPLES)
+                    for i in range(NR_SAMPLES):
+                        output_features[i], log_prior[i], log_variational_posterior[i] = self.network(batch_x)
+
+                    output_features = output_features.mean(dim=0).to(DEVICE)
+                    log_prior = log_prior.mean().to(DEVICE)
+                    log_variational_posterior = log_variational_posterior.mean().to(DEVICE)
+
+                    # # q(w | theta) - log P(w) - log P(D | w)
+                    loss = (log_variational_posterior - log_prior) / batch_x.shape[0] \
                            + F.nll_loss(F.log_softmax(output_features, dim=1), batch_y, reduction='sum')
 
                     loss.backward()
@@ -146,7 +152,9 @@ class Model(object):
                         assert isinstance(self.network, BayesNet)
                         current_logits, _, _ = self.network(batch_x)
                     current_accuracy = (current_logits.argmax(axis=1) == batch_y).float().mean()
-                    progress_bar.set_postfix(loss=loss.item(), acc=current_accuracy.item(), kl=kl.detach().numpy())
+                    progress_bar.set_postfix(loss=loss.item(), acc=current_accuracy.item(),
+                                             log_variational_posterior=log_variational_posterior.detach().cpu().numpy(),
+                                             log_prior=log_prior.detach().cpu().numpy())
 
     def predict(self, data_loader: torch.utils.data.DataLoader) -> np.ndarray:
         """

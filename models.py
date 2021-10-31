@@ -7,6 +7,8 @@ from torch.nn import functional as F
 
 from layers import BayesianLayer
 
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 class DenseNet(nn.Module):
     """
@@ -92,19 +94,17 @@ class BayesNet(nn.Module):
         # TODO: Perform a full pass through your BayesNet as described in this method's docstring.
         #  You can look at DenseNet to get an idea how a forward pass might look like.
         #  Don't forget to apply your activation function in between BayesianLayers!
-        log_prior = torch.tensor(0.0)
-        log_variational_posterior = torch.tensor(0.0)
-        output_features = x
+        log_prior = torch.tensor(0.0).to(DEVICE)
+        log_variational_posterior = torch.tensor(0.0).to(DEVICE)
 
         for idx, current_layer in enumerate(self.layers):
-            new_features, new_log_prior, new_log_posterior = current_layer(output_features)
+            x, new_log_prior, new_log_posterior = current_layer(x)
             if idx < len(self.layers) - 1:
-                new_features = self.activation(new_features)
-            output_features = new_features
-            log_prior += new_log_prior  # TODO do we just add up according to (2) in paper?
+                x = self.activation(x)
+            log_prior += new_log_prior
             log_variational_posterior += new_log_posterior
 
-        return output_features, log_prior, log_variational_posterior
+        return x, log_prior, log_variational_posterior
 
     def predict_probabilities(self, x: torch.Tensor, num_mc_samples: int = 10) -> torch.Tensor:
         """

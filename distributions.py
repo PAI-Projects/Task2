@@ -8,6 +8,8 @@ from torch.distributions import Normal
 
 from util import ParameterDistribution
 
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 class MixtureDistribution(ParameterDistribution):
     """
@@ -22,14 +24,14 @@ class MixtureDistribution(ParameterDistribution):
         self.sample_shape = sample_shape
 
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
-        x = torch.tensor(0.0)
+        x = torch.tensor(0.0).to(DEVICE)
         for i, dist in enumerate(self.mixtures):
             x += dist.log_likelihood(values) * self.mixture_weights[i]
 
         return x
 
     def sample(self) -> torch.Tensor:
-        x = torch.zeros(self.sample_shape)
+        x = torch.zeros(self.sample_shape).to(DEVICE)
         for i, dist in enumerate(self.mixtures):
             x += dist.sample() * self.mixture_weights[i]
 
@@ -57,7 +59,7 @@ class UnivariateGaussian(ParameterDistribution):
         m = Normal(self.mu, self.sigma)
         log_p = m.log_prob(values)
 
-        return log_p.sum()
+        return log_p.mean()
 
     def sample(self) -> torch.Tensor:
         z = torch.normal(mean=torch.tensor(0.0), std=torch.tensor(1.0))
@@ -87,11 +89,11 @@ class MultivariateDiagonalGaussian(ParameterDistribution):
 
         log_p = m.log_prob(values)
 
-        return log_p.sum()
+        return log_p.mean()
 
     def sample(self) -> torch.Tensor:
         # since we have a diagonal covariance matrix we can draw from n unvariate gaussians
-        Z = torch.empty(self.mu.size()).normal_(0, 1)
+        Z = torch.empty(self.mu.size()).normal_(0, 1).to(DEVICE)
 
         # re-parameterization
         x = self.mu + F.softplus(self.rho) * Z

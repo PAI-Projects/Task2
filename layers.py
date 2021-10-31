@@ -35,9 +35,9 @@ class BayesianLayer(nn.Module):
         # TODO add mixture used in paper
         nr_mixture_components = 2
         # refers to pi in paper; pi in {0.25, 0.5, 0.75}
-        mixture_weights = torch.tensor([0.5, 0.5])
+        mixture_weights = torch.tensor([0.75, 0.25])
         # according to paper: sigma1 in e^-{0, 1, 2}, sigma2 in e^-{6,7,8}
-        prior_sigma = [torch.exp(torch.tensor(-2)), torch.exp(torch.tensor(-8))]
+        prior_sigma = [torch.exp(torch.tensor(-2)), torch.exp(torch.tensor(-6))]
 
         self.prior = MixtureDistribution(mixtures=nn.ModuleList([UnivariateGaussian(torch.tensor(0.0), prior_sigma[0]),
                                                                  UnivariateGaussian(torch.tensor(0.0), prior_sigma[1])]),
@@ -63,11 +63,11 @@ class BayesianLayer(nn.Module):
             mixtures=nn.ModuleList([
                 MultivariateDiagonalGaussian(
                     torch.nn.Parameter(torch.zeros(out_features, in_features)),
-                    torch.nn.Parameter(torch.ones(out_features, in_features) * init_rho[0])
+                    torch.nn.Parameter(torch.ones(out_features, in_features).normal_(init_rho[0] / 2, 0.5))
                 ),
                 MultivariateDiagonalGaussian(
                     torch.nn.Parameter(torch.zeros(out_features, in_features)),
-                    torch.nn.Parameter(torch.ones(out_features, in_features) * init_rho[1])
+                    torch.nn.Parameter(torch.ones(out_features, in_features).normal_(init_rho[1] / 2, 0.5))
                 )
             ]),
             mixture_weights=torch.nn.Parameter(torch.tensor([0.5, 0.5])),
@@ -106,24 +106,17 @@ class BayesianLayer(nn.Module):
         #  Make sure to check whether `self.use_bias` is True,
         #  and if yes, include the bias as well.
         weights = self.weights_var_posterior.sample()
+        weights = torch.nan_to_num(weights)
 
         bias = self.bias_var_posterior.sample() if self.use_bias else None
+        bias = torch.nan_to_num(bias)
 
-        log_prior = self.prior.sample().view(-1)
-        log_variational_posterior = weights.view(-1)
+        log_prior = self.prior.log_likelihood(weights)
+        log_variational_posterior = self.weights_var_posterior.log_likelihood(weights)
         if self.use_bias:
-            log_prior += self.prior.sample().view(-1)
-            # log_variational_posterior += bias
+            log_prior += self.prior.log_likelihood(bias)
+            log_variational_posterior += self.bias_var_posterior.log_likelihood(bias)
 
-        kl_div = torch.abs(F.kl_div(log_variational_posterior, log_prior, reduction="sum", log_target=True))
+        # kl_div = torch.abs(F.kl_div(log_variational_posterior, log_prior, reduction="batchmean", log_target=True))
 
-        return F.linear(inputs, weights, bias), kl_div, 0
-
-        # # TODO: is this correct?
-        # log_prior = self.prior.log_likelihood(weights)
-        # log_variational_posterior = self.weights_var_posterior.log_likelihood(weights)
-        # if self.use_bias:
-        #     log_prior += self.prior.log_likelihood(bias)
-        #     log_variational_posterior += self.bias_var_posterior.log_likelihood(bias)
-        #
-        # return F.linear(inputs, weights, bias), log_prior, log_variational_posterior
+        return F.linear(inputs, weights, bias), log_prior, log_variational_posterior
