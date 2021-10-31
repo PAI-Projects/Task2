@@ -15,6 +15,8 @@ from util import ece, ParameterDistribution
 # Set `EXTENDED_EVALUATION` to `True` in order to visualize your predictions.
 EXTENDED_EVALUATION = False
 
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 
 def run_solution(dataset_train: torch.utils.data.Dataset, data_dir: str = os.curdir, output_dir: str = '/results/') -> 'Model':
     """
@@ -91,12 +93,14 @@ class Model(object):
         )
 
         self.network.train()
-
+        self.network.to(DEVICE)
         progress_bar = trange(self.num_epochs)
         for _ in progress_bar:
             num_batches = len(train_loader)
             for batch_idx, (batch_x, batch_y) in enumerate(train_loader):
                 # batch_x are of shape (batch_size, 784), batch_y are of shape (batch_size,)
+                batch_x = batch_x.to(DEVICE)
+                batch_y = batch_y.to(DEVICE)
 
                 self.network.zero_grad()
 
@@ -121,8 +125,6 @@ class Model(object):
                     loss = F.nll_loss(F.log_softmax(outputs, dim=1), batch_y, reduction='sum')
                     loss += kl_div / num_batches
                     loss.backward()
-
-
 
                 self.optimizer.step()
 
@@ -150,6 +152,9 @@ class Model(object):
 
         probability_batches = []
         for batch_x, batch_y in data_loader:
+            batch_x = batch_x.to(DEVICE)
+            batch_y = batch_y.to(DEVICE)
+
             current_probabilities = self.network.predict_probabilities(batch_x).detach().numpy()
             probability_batches.append(current_probabilities)
 
@@ -166,6 +171,7 @@ class BayesianLayer(nn.Module):
     It maintains a prior and variational posterior for the weights (and biases)
     and uses sampling to approximate the gradients via Bayes by backprop.
     """
+
     def __init__(self, in_features: int, out_features: int, bias: bool = True):
         """
         Create a BayesianLayer.
@@ -184,7 +190,7 @@ class BayesianLayer(nn.Module):
         #  You can create constants using torch.tensor(...).
         #  Do NOT use torch.Parameter(...) here since the prior should not be optimized!
         #  Example: self.prior = MyPrior(torch.tensor(0.0), torch.tensor(1.0))
-        self.prior_weights = UnivariateGaussian(torch.tensor(0.0), torch.tensor(0.7))
+        self.prior_weights = UnivariateGaussian(torch.tensor(0.0), torch.exp(torch.tensor(-2)))
         if self.use_bias:
             self.prior_bias = UnivariateGaussian(torch.tensor(0.0), torch.tensor(1.0))
 
@@ -203,9 +209,8 @@ class BayesianLayer(nn.Module):
         #  )
         self.weights_var_posterior = MultivariateDiagonalGaussian(
             torch.nn.Parameter(torch.zeros((out_features, in_features))),
-            torch.nn.Parameter(torch.ones((out_features, in_features)).normal_(-3, 0.01))
+            torch.nn.Parameter(torch.ones((out_features, in_features)).normal_(-3, 0.0001))
         )
-
 
         assert isinstance(self.weights_var_posterior, ParameterDistribution)
         assert any(True for _ in self.weights_var_posterior.parameters()), 'Weight posterior must have parameters'
@@ -241,22 +246,25 @@ class BayesianLayer(nn.Module):
         weights = self.weights_var_posterior.sample()
 
         d = len(self.weights_var_posterior.mu)
-        kl = 0.5 * ((self.weights_var_posterior.rho / self.prior_weights.sigma).pow(2).sum()
+
+        sigma_posterior = self.weights_var_posterior.rho.exp().log1p()
+
+        kl = 0.5 * ((sigma_posterior / self.prior_weights.sigma).pow(2).sum()
                     + ((self.prior_weights.mu - self.weights_var_posterior.mu) / self.prior_weights.sigma).pow(2).sum()
-                    - d + (2 * d * torch.log(self.prior_weights.sigma) - 2 * self.weights_var_posterior.rho.sum()))
+                    - d + (2 * d * torch.log(self.prior_weights.sigma) - 2 * sigma_posterior.sum()))
 
         if self.use_bias:
+            bias_sigma_posterior = self.bias_var_posterior.rho.exp().log1p()
+
             bias = self.bias_var_posterior.sample()
-            kl += 0.5 * ((self.bias_var_posterior.rho / self.prior_weights.sigma).pow(2).sum()
-                    + ((self.prior_weights.mu - self.bias_var_posterior.mu) / self.prior_weights.sigma).pow(2).sum()
-                    - d + (2 * d * torch.log(self.prior_weights.sigma) - 2 * self.bias_var_posterior.rho.sum()))
+            kl += 0.5 * ((bias_sigma_posterior / self.prior_weights.sigma).pow(2).sum()
+                         + ((self.prior_weights.mu - self.bias_var_posterior.mu) / self.prior_weights.sigma).pow(2).sum()
+                         - d + (2 * d * torch.log(self.prior_weights.sigma) - 2 * bias_sigma_posterior.sum()))
         else:
             bias = None
 
-        #log_prior = self.prior_weights
-        #log_variational_posterior = self.weights_var_posterior.log_likelihood(weights+bias) - self.prior_weights.log_likelihood(weights) #Acording to paper multiply here with log P(D|w)
-
-
+        # log_prior = self.prior_weights
+        # log_variational_posterior = self.weights_var_posterior.log_likelihood(weights+bias) - self.prior_weights.log_likelihood(weights) #Acording to paper multiply here with log P(D|w)
 
         # According to https://github.com/kumar-shridhar/PyTorch-BayesianCNN/blob/master/layers/BBB/BBBLinear.py
         # Prior is not used in forward pass
@@ -305,15 +313,14 @@ class BayesNet(nn.Module):
         #  You can look at DenseNet to get an idea how a forward pass might look like.
         #  Don't forget to apply your activation function in between BayesianLayers!
         current_features = x
-        cur_kl_div = torch.tensor(0.0)
-        cur_log_posterior = torch.tensor(0.0)
+        cur_kl_div = torch.tensor(0.0).to(DEVICE)
+        cur_log_posterior = torch.tensor(0.0).to(DEVICE)
         for idx, cur_layer in enumerate(self.layers):
             current_features, new_kl_div, nothing = cur_layer(current_features)
             cur_kl_div += new_kl_div
             cur_log_posterior += nothing
-            if idx < len(self.layers)-1:
+            if idx < len(self.layers) - 1:
                 current_features = self.activation(current_features)
-
 
         cur_kl_div = cur_kl_div
         log_variational_posterior = cur_log_posterior
