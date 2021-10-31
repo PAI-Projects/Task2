@@ -117,10 +117,12 @@ class Model(object):
                     # BayesNet training step via Bayes by backprop
                     assert isinstance(self.network, BayesNet)
 
-                    outputs, log_prior, log_var_posterior = self.network(batch_x)
-                    kl = 0.0
+                    outputs, kl_div, nothing = self.network(batch_x)
+                    loss = F.nll_loss(F.log_softmax(outputs, dim=1), batch_y, reduction='sum')
+                    loss += kl_div / num_batches
+                    loss.backward()
 
-                    
+
 
                 self.optimizer.step()
 
@@ -237,18 +239,28 @@ class BayesianLayer(nn.Module):
         #  and if yes, include the bias as well.
         weights = self.weights_var_posterior.sample()
 
+        d = len(self.weights_var_posterior.mu)
+        kl = 0.5 * ((self.weights_var_posterior.rho / self.prior_weights.sigma).pow(2).sum()
+                    + ((self.prior_weights.mu - self.weights_var_posterior.mu) / self.prior_weights.sigma).pow(2).sum()
+                    - d + (2 * d * torch.log(self.prior_weights.sigma) - 2 * self.weights_var_posterior.rho.sum()))
+
         if self.use_bias:
             bias = self.bias_var_posterior.sample()
+            kl += 0.5 * ((self.bias_var_posterior.rho / self.prior_weights.sigma).pow(2).sum()
+                    + ((self.prior_weights.mu - self.bias_var_posterior.mu) / self.prior_weights.sigma).pow(2).sum()
+                    - d + (2 * d * torch.log(self.prior_weights.sigma) - 2 * self.bias_var_posterior.rho.sum()))
         else:
             bias = None
 
-        log_prior = None
-        log_variational_posterior = None
+        #log_prior = self.prior_weights
+        #log_variational_posterior = self.weights_var_posterior.log_likelihood(weights+bias) - self.prior_weights.log_likelihood(weights) #Acording to paper multiply here with log P(D|w)
+
+
 
         # According to https://github.com/kumar-shridhar/PyTorch-BayesianCNN/blob/master/layers/BBB/BBBLinear.py
         # Prior is not used in forward pass
 
-        return F.linear(inputs, weights, bias), log_prior, log_variational_posterior
+        return F.linear(inputs, weights, bias), kl, 0
 
 
 class BayesNet(nn.Module):
@@ -292,21 +304,21 @@ class BayesNet(nn.Module):
         #  You can look at DenseNet to get an idea how a forward pass might look like.
         #  Don't forget to apply your activation function in between BayesianLayers!
         current_features = x
-        cur_log_prior = torch.tensor(0.0)
+        cur_kl_div = torch.tensor(0.0)
         cur_log_posterior = torch.tensor(0.0)
         for idx, cur_layer in enumerate(self.layers):
-            current_features, new_log_prior, new_log_var_posterior = cur_layer(current_features)
-            cur_log_prior += new_log_prior
-            cur_log_posterior += new_log_var_posterior
+            current_features, new_kl_div, nothing = cur_layer(current_features)
+            cur_kl_div += new_kl_div
+            cur_log_posterior += nothing
             if idx < len(self.layers)-1:
                 current_features = self.activation(current_features)
 
 
-        log_prior = cur_log_prior
+        cur_kl_div = cur_kl_div
         log_variational_posterior = cur_log_posterior
         output_features = current_features
 
-        return output_features, log_prior, log_variational_posterior
+        return output_features, cur_kl_div, log_variational_posterior
 
     def predict_probabilities(self, x: torch.Tensor, num_mc_samples: int = 10) -> torch.Tensor:
         """
@@ -368,7 +380,7 @@ class MultivariateDiagonalGaussian(ParameterDistribution):
 
     def sample(self) -> torch.Tensor:
         weight = self.mu + torch.log1p(torch.exp(self.rho)) * torch.randn_like(self.rho)
-        raise weight
+        return weight
 
 
 def evaluate(model: Model, eval_loader: torch.utils.data.DataLoader, data_dir: str, output_dir: str):
