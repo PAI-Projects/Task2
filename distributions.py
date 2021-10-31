@@ -82,10 +82,10 @@ class MultivariateDiagonalGaussian(ParameterDistribution):
         self.rho = rho
 
     def log_likelihood(self, values: torch.Tensor) -> torch.Tensor:
-        variances = torch.pow(F.softplus(self.rho), 2)
-        m = Normal(self.mu.view(-1), variances.view(-1))
+        sigma = F.softplus(self.rho)
+        m = Normal(self.mu, sigma)
 
-        log_p = m.log_prob(values.view(-1))
+        log_p = m.log_prob(values)
 
         return log_p.sum()
 
